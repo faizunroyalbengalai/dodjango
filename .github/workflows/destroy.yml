@@ -1,4 +1,4 @@
-name: Destroy — dodjango
+name: Destroy — dodjango-ullu
 
 on:
   workflow_dispatch:

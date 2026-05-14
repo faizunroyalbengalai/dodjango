@@ -3,7 +3,7 @@
 # When registry is set ("ghcr" or "docr") the playbook installs Docker and
 # pulls a pre-built container from that registry. Otherwise it installs the
 # language runtime natively and runs the app under systemd/pm2.
-- name: Deploy dodjango
+- name: Deploy dodjango-ullu
   hosts: all
   become: true
   gather_facts: yes
@@ -11,7 +11,7 @@
     ansible_ssh_retries: 5
     app_dir: /opt/app
     app_port: 8000
-    project: 'dodjango'
+    project: 'dodjango-ullu'
     web_server: 'nginx'
     python_version: '3.11'
     entrypoint: 'app.main:app'
@@ -70,42 +70,6 @@
             state: present
             update_cache: yes
       when: python_version not in ('3', '')
-
-    # ── Local database installation ───────────────────────────────────────────
-    - name: Install PostgreSQL server
-      apt:
-        name:
-          - postgresql
-          - postgresql-contrib
-        state: present
-        update_cache: yes
-
-    - name: Ensure PostgreSQL is started
-      systemd:
-        name: postgresql
-        state: started
-        enabled: yes
-
-    - name: Wait for PostgreSQL to be ready
-      wait_for:
-        port: 5432
-        host: 127.0.0.1
-        timeout: 60
-
-    - name: Create PostgreSQL database and user
-      shell: |
-        DB_NAME="{{ deploy_db_name | default(project | replace('-', '_') + 'db', true) }}"
-        DB_USER="{{ deploy_db_username | default('appuser', true) }}"
-        DB_PASS="{{ deploy_db_password | default('apppass', true) }}"
-        sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 \
-          || sudo -u postgres psql -c "CREATE DATABASE \"$DB_NAME\";"
-        sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | grep -q 1 \
-          || sudo -u postgres psql -c "CREATE USER \"$DB_USER\" WITH PASSWORD '$DB_PASS';"
-        sudo -u postgres psql -c "ALTER USER \"$DB_USER\" WITH PASSWORD '$DB_PASS';"
-        sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE \"$DB_NAME\" TO \"$DB_USER\";"
-        sudo -u postgres psql -c "ALTER DATABASE \"$DB_NAME\" OWNER TO \"$DB_USER\";"
-      args:
-        executable: /bin/bash
 
 
     - name: Install Nginx
@@ -172,10 +136,6 @@
     - name: Create .env file
       shell: |
         printf '' > {{ app_dir }}/.env
-        DB_USER="{{ deploy_db_username | default('appuser', true) }}"
-        DB_PASS="{{ deploy_db_password | default('', true) }}"
-        DB_NAME="{{ deploy_db_name | default(project | replace('-', '_') + 'db', true) }}"
-        printf 'DATABASE_URL=postgresql://%s:%s@localhost:5432/%s\n' "$DB_USER" "$DB_PASS" "$DB_NAME" >> {{ app_dir }}/.env
         printf 'PORT={{ app_port }}\nAPP_ENV=production\n' >> {{ app_dir }}/.env
       args:
         executable: /bin/bash
@@ -200,7 +160,7 @@
         content: |
           [Unit]
           Description={{ project }} FastAPI app
-          After=network.target postgresql.service
+          After=network.target
           [Service]
           User=root
           WorkingDirectory={{ app_dir }}
